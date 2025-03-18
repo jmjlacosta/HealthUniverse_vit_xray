@@ -13,8 +13,8 @@ feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
 model = ViTForImageClassification.from_pretrained(model_name)
 
 app = FastAPI(
-    title="ViT Xray Tool",
-    description="Analyzes chest X-ray images using a Vision Transformer (ViT) model.",
+    title="ViT-Xray",
+    description="AI-powered chest X-ray analysis using a Vision Transformer (ViT) model.",
     version="1.0.0",
 )
 
@@ -69,8 +69,19 @@ def analyze_xray(
 
     # Hugging Face model label mapping
     labels = model.config.id2label
-    prediction_label = labels[predicted_class]
+    # prediction_label = labels[predicted_class]
+    label_mapping = {
+        0: "Cardiomegaly",
+        1: "Edema",
+        2: "Consolidation",
+        3: "Pneumonia",
+        4: "No Finding",
+    }
 
+    prediction_label = label_mapping.get(predicted_class, f"Unknown Label ({predicted_class})")
+
+
+    
     base_url = request.base_url
     return {
         "prediction": prediction_label,
