@@ -10,18 +10,20 @@ from PIL import Image
 
 # Define model storage directory
 MODEL_DIR = "models/vit-xray"
+REQUIRED_FILES = ["config.json", "pytorch_model.bin", "preprocessor_config.json"]
 
-# Ensure model is downloaded and stored locally
-if not os.path.exists(MODEL_DIR):
-    print("Model not found locally. Downloading...")
-    os.makedirs(MODEL_DIR, exist_ok=True)
-
+# Check if model files exist; if not, download them
+missing_files = [f for f in REQUIRED_FILES if not os.path.exists(os.path.join(MODEL_DIR, f))]
+if missing_files:
+    print("Some model files are missing. Downloading...")
+    
     model_name = "codewithdark/vit-chest-xray"
-    model = ViTForImageClassification.from_pretrained(model_name, cache_dir=MODEL_DIR)
-    feature_extractor = ViTFeatureExtractor.from_pretrained(model_name, cache_dir=MODEL_DIR)
+    model = ViTForImageClassification.from_pretrained(model_name)
+    feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
 
     model.save_pretrained(MODEL_DIR)
     feature_extractor.save_pretrained(MODEL_DIR)
+    
     print("Model downloaded and saved!")
 
 # Load the model from the local directory
@@ -62,7 +64,7 @@ def analyze_xray(
     analysis_type: Annotated[
         Literal["Standard", "Detailed"],
         Form(...)
-    ] = "Standard",
+    ] = "Standard",  # Default to "Standard" analysis
 ):
     """Processes an X-ray image and predicts abnormalities using ViT."""
 
@@ -70,9 +72,6 @@ def analyze_xray(
     image_id = secrets.token_hex(16)
     input_file = f"data/{image_id}_input.png"
     output_file = f"data/{image_id}_processed.png"
-    
-    # Ensure data folder exists
-    os.makedirs("data", exist_ok=True)
 
     # Save the uploaded image
     with open(input_file, "wb") as f:
