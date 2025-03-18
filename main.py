@@ -1,3 +1,4 @@
+import os
 import secrets
 import torch
 from typing import Annotated, Literal
@@ -7,10 +8,34 @@ from fastapi.middleware.cors import CORSMiddleware
 from transformers import ViTForImageClassification, ViTFeatureExtractor
 from PIL import Image
 
-# Load the Hugging Face model and feature extractor
-model_name = "codewithdark/vit-chest-xray"
-feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
-model = ViTForImageClassification.from_pretrained(model_name)
+# Define model storage directory
+MODEL_DIR = "models/vit-xray"
+
+# Ensure model is downloaded and stored locally
+if not os.path.exists(MODEL_DIR):
+    print("Model not found locally. Downloading...")
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    model_name = "codewithdark/vit-chest-xray"
+    model = ViTForImageClassification.from_pretrained(model_name, cache_dir=MODEL_DIR)
+    feature_extractor = ViTFeatureExtractor.from_pretrained(model_name, cache_dir=MODEL_DIR)
+
+    model.save_pretrained(MODEL_DIR)
+    feature_extractor.save_pretrained(MODEL_DIR)
+    print("Model downloaded and saved!")
+
+# Load the model from the local directory
+feature_extractor = ViTFeatureExtractor.from_pretrained(MODEL_DIR)
+model = ViTForImageClassification.from_pretrained(MODEL_DIR)
+
+# Define the label mapping
+label_mapping = {
+    0: "Cardiomegaly",
+    1: "Edema",
+    2: "Consolidation",
+    3: "Pneumonia",
+    4: "No Finding",
+}
 
 app = FastAPI(
     title="ViT-Xray",
@@ -37,7 +62,7 @@ def analyze_xray(
     analysis_type: Annotated[
         Literal["Standard", "Detailed"],
         Form(...)
-    ] = "Standard",  # Default to "Standard" analysis
+    ] = "Standard",
 ):
     """Processes an X-ray image and predicts abnormalities using ViT."""
 
@@ -46,6 +71,9 @@ def analyze_xray(
     input_file = f"data/{image_id}_input.png"
     output_file = f"data/{image_id}_processed.png"
     
+    # Ensure data folder exists
+    os.makedirs("data", exist_ok=True)
+
     # Save the uploaded image
     with open(input_file, "wb") as f:
         f.write(image.file.read())
@@ -57,37 +85,34 @@ def analyze_xray(
     
     # Convert image to tensor for model inference
     inputs = feature_extractor(images=img, return_tensors="pt")
-    
+
     # Run model inference
     with torch.no_grad():
         outputs = model(**inputs)
-    
+
     # Get the predicted class and confidence
     logits = outputs.logits
-    predicted_class = logits.argmax(-1).item()
-    confidence = torch.nn.functional.softmax(logits, dim=-1)[0, predicted_class].item()
+    predicted_class_idx = logits.argmax(-1).item()
+    confidence = torch.nn.functional.softmax(logits, dim=-1)[0, predicted_class_idx].item()
 
-    # Hugging Face model label mapping
-    labels = model.config.id2label
-    # prediction_label = labels[predicted_class]
-    label_mapping = {
-        0: "Cardiomegaly",
-        1: "Edema",
-        2: "Consolidation",
-        3: "Pneumonia",
-        4: "No Finding",
-    }
+    # Get the corresponding label
+    predicted_label = label_mapping.get(predicted_class_idx, f"Unknown Label ({predicted_class_idx})")
 
-    prediction_label = label_mapping.get(predicted_class, f"Unknown Label ({predicted_class})")
-
-
-    
-    base_url = request.base_url
-    return {
-        "prediction": prediction_label,
+    # Prepare response
+    base_url = request.base_url if request else "http://localhost:8000"
+    response = {
+        "prediction": predicted_label,
         "confidence": round(confidence, 4),
         "processed_image_link": f"{base_url}download_processed_image/{image_id}",
     }
+
+    # If detailed analysis is requested, return all class probabilities
+    if analysis_type == "Detailed":
+        probabilities = torch.nn.functional.softmax(logits, dim=-1)[0].tolist()
+        detailed_scores = {label_mapping[i]: round(probabilities[i], 4) for i in range(len(label_mapping))}
+        response["detailed_scores"] = detailed_scores
+
+    return response
 
 @app.get("/download_processed_image/{image_id}", summary="Download Processed X-ray Image")
 async def download_processed_image(image_id: str):
