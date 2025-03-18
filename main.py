@@ -32,12 +32,12 @@ app.add_middleware(
     description="Accepts a chest X-ray image, runs it through a ViT model, and returns a classification result.",
 )
 def analyze_xray(
+    request: Request,
     image: Annotated[UploadFile, File()],
     analysis_type: Annotated[
         Literal["Standard", "Detailed"],
         Form(...)
     ] = "Standard",  # Default to "Standard" analysis
-    request: Request
 ):
     """Processes an X-ray image and predicts abnormalities using ViT."""
 
