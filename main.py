@@ -13,7 +13,7 @@ feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
 model = ViTForImageClassification.from_pretrained(model_name)
 
 app = FastAPI(
-    title="Chest X-ray Analysis API",
+    title="ViT Xray Tool",
     description="Analyzes chest X-ray images using a Vision Transformer (ViT) model.",
     version="1.0.0",
 )
@@ -32,12 +32,11 @@ app.add_middleware(
     description="Accepts a chest X-ray image, runs it through a ViT model, and returns a classification result.",
 )
 def analyze_xray(
+    image: Annotated[UploadFile, File()],
     analysis_type: Annotated[
         Literal["Standard", "Detailed"],
         Form(...)
     ] = "Standard",  # Default to "Standard" analysis
-    
-    image: Annotated[UploadFile, File()],
     request: Request
 ):
     """Processes an X-ray image and predicts abnormalities using ViT."""
